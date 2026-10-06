@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\CookiePayload;
 use App\Support\NotificationCooldown;
 use App\Support\ScreenshotMode;
 use Illuminate\Foundation\Http\FormRequest;
@@ -27,6 +28,15 @@ class StoreTestSuiteRequest extends FormRequest
             $parts = array_filter(array_map('trim', explode(',', (string) $this->input('coverage_url_filter'))));
 
             $this->merge(['coverage_url_filter' => $parts ? implode(',', $parts) : null]);
+        }
+
+        // Cookies pasted into the suite settings (or uploaded via API/MCP)
+        // come in several real-world shapes — Playwright's camelCase with a
+        // float expires, DevTools' lowercase sameSite spellings and
+        // expirationDate. Normalize them onto the canonical form so the
+        // validation rules below judge the cookie, not the dialect.
+        if ($this->has('cookies') && is_array($this->input('cookies'))) {
+            $this->merge(['cookies' => CookiePayload::normalize($this->input('cookies'))]);
         }
     }
 
