@@ -286,10 +286,12 @@
         "pasteCookieJson": "Tampal JSON",
         "pasteCookieJsonTitle": "Tampal JSON Cookie",
         "pasteCookieJsonHint": "Tampal tatasusunan cookie Playwright atau objek JSON storageState. Cookie sedia ada dengan name+domain+path yang sama akan digantikan; yang baharu akan ditambah.",
-        "pasteCookieJsonPlaceholder": "[\n  { \"name\": \"session\", \"value\": \"abc\", \"domain\": \"example.com\", \"path\": \"/\" }\n]",
+        "pasteCookieJsonPlaceholder": "[\n  {'{'} \"name\": \"session\", \"value\": \"abc\", \"domain\": \"example.com\", \"path\": \"/\" {'}'}\n]",
         "pasteCookieJsonApply": "Gunakan",
         "pasteCookieJsonCancel": "Batal",
         "pasteCookieJsonError": "Tidak dapat menghuraikan JSON. Sila semak formatnya.",
+
+        "pasteCookieJsonSaveError": "Pelayan menolak cookie ini. Semak setiap medan (name, domain atau url, sameSite) dan cuba lagi.",
         "cookiesCount": "{count} cookie",
         "browser": "Pelayar",
         "mode": "Mod",

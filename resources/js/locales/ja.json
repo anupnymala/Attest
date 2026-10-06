@@ -286,10 +286,12 @@
         "pasteCookieJson": "JSONを貼り付け",
         "pasteCookieJsonTitle": "Cookie JSONを貼り付け",
         "pasteCookieJsonHint": "PlaywrightのCookie配列またはstorageState JSONオブジェクトを貼り付けてください。同じ name+domain+path の既存Cookieは置き換えられ、新しいものは追加されます。",
-        "pasteCookieJsonPlaceholder": "[\n  { \"name\": \"session\", \"value\": \"abc\", \"domain\": \"example.com\", \"path\": \"/\" }\n]",
+        "pasteCookieJsonPlaceholder": "[\n  {'{'} \"name\": \"session\", \"value\": \"abc\", \"domain\": \"example.com\", \"path\": \"/\" {'}'}\n]",
         "pasteCookieJsonApply": "適用",
         "pasteCookieJsonCancel": "キャンセル",
         "pasteCookieJsonError": "JSONを解析できませんでした。形式を確認してください。",
+
+        "pasteCookieJsonSaveError": "サーバーがこれらのCookieを拒否しました。各フィールド（name、domainまたはurl、sameSite）を確認して再試行してください。",
         "cookiesCount": "{count} 件のCookie",
         "browser": "ブラウザ",
         "mode": "モード",
