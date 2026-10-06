@@ -450,6 +450,30 @@ JS);
         File::deleteDirectory($tmpDir);
     }
 
+    public function test_harness_normalizes_stored_cookies_so_playwright_accepts_them(): void
+    {
+        if (static::nodeUnavailable() || ! is_dir(base_path('node_modules/playwright'))) {
+            $this->markTestSkipped('node or the playwright package is not available; skipping harness test.');
+        }
+
+        // Shape written to cookies.json by the runner services: unset DB columns are null.
+        $stored = [
+            ['name' => 'by_domain', 'value' => 'v', 'domain' => '.example.com', 'path' => null, 'url' => null, 'expires' => null, 'httpOnly' => true, 'secure' => true, 'sameSite' => null],
+            ['name' => 'by_url', 'value' => null, 'domain' => null, 'path' => null, 'url' => 'https://example.com/', 'expires' => 1900000000, 'httpOnly' => false, 'secure' => false, 'sameSite' => 'Lax'],
+        ];
+
+        $script = "const {normalizeCookies}=require('./resources/playwright/harness.cjs');"
+            .'process.stdout.write(JSON.stringify(normalizeCookies(JSON.parse(process.argv[1]))));';
+        exec('cd '.escapeshellarg(base_path()).' && node -e '.escapeshellarg($script).' '.escapeshellarg(json_encode($stored)).' 2>&1', $output, $exitCode);
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+
+        [$byDomain, $byUrl] = json_decode(implode("\n", $output), true);
+
+        // Playwright rejects null values and cookies carrying both url and domain.
+        $this->assertSame(['name' => 'by_domain', 'value' => 'v', 'domain' => '.example.com', 'path' => '/', 'expires' => -1, 'httpOnly' => true, 'secure' => true], $byDomain);
+        $this->assertSame(['name' => 'by_url', 'value' => '', 'url' => 'https://example.com/', 'expires' => 1900000000, 'httpOnly' => false, 'secure' => false, 'sameSite' => 'Lax'], $byUrl);
+    }
+
     private static function nodeUnavailable(): bool
     {
         exec('command -v node 2>/dev/null', $output, $exitCode);

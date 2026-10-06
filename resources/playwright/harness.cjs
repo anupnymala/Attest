@@ -8,6 +8,32 @@ const path = require('path')
 const playwright = require(path.join(__dirname, '..', '..', 'node_modules', 'playwright'))
 
 /**
+ * Converts stored suite cookies (DB rows serialised to JSON, where every unset
+ * column is `null`) into objects Playwright's `addCookies` accepts.
+ *
+ * Playwright rejects a key that is present but null/empty ("expected string,
+ * got object"), and rejects a cookie that carries both `url` and `domain`.
+ * So: send `domain` + `path` when a domain is set, otherwise `url`; omit every
+ * other unset field; a missing `expires` is a session cookie (-1).
+ */
+function normalizeCookies (cookies) {
+    return cookies.map((c) => {
+        const out = { name: c.name, value: c.value ?? '' }
+        if (c.domain) {
+            out.domain = c.domain
+            out.path = c.path || '/'
+        } else if (c.url) {
+            out.url = c.url
+        }
+        out.expires = (c.expires === null || c.expires === undefined || c.expires === '') ? -1 : c.expires
+        if (typeof c.httpOnly === 'boolean') out.httpOnly = c.httpOnly
+        if (typeof c.secure === 'boolean') out.secure = c.secure
+        if (c.sameSite) out.sameSite = c.sameSite
+        return out
+    })
+}
+
+/**
  * Picks the proxy (if any) that should handle a request to `host`, based on
  * per-domain rules, falling back to `defaultProxy`. Each rule's `domain` is a
  * regular expression tested against the hostname (case-insensitive). Examples:
@@ -329,18 +355,9 @@ async function runWithHarness (
         const context = await browser.newContext(contextOpts)
 
         // Inject suite-level cookies before any page is created, so tests
-        // start already authenticated. Playwright requires each cookie to
-        // carry either `url` or `domain`; a missing/empty `expires` means a
-        // session cookie and is normalized to -1 (Playwright's sentinel).
+        // start already authenticated.
         if (Array.isArray(cookies) && cookies.length > 0) {
-            const normalized = cookies.map((c) => {
-                const out = { ...c }
-                if (out.expires === null || out.expires === undefined || out.expires === '') {
-                    out.expires = -1
-                }
-                return out
-            })
-            await context.addCookies(normalized)
+            await context.addCookies(normalizeCookies(cookies))
         }
 
         page = await context.newPage()
@@ -496,4 +513,4 @@ async function runWithHarness (
     }
 }
 
-module.exports = { runWithHarness }
+module.exports = { runWithHarness, normalizeCookies }
