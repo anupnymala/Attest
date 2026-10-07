@@ -224,6 +224,109 @@ class SuiteCookiesTest extends TestCase
             ->assertSessionHasErrors(['cookies.0.name']);
     }
 
+    // ─── Paste-JSON / real-world cookie shapes ────────────────────────────────
+
+    public function test_update_accepts_raw_playwright_cookies_with_camel_case_and_float_expires(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $suite = TestSuite::create(['name' => 'Suite', 'created_by' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->put("/sorify/suites/{$suite->id}", [
+                'cookies' => [
+                    ['name' => 'sid', 'value' => 'v', 'domain' => 'example.com', 'path' => '/', 'expires' => 1789999999.047, 'httpOnly' => true, 'secure' => true, 'sameSite' => 'Lax'],
+                ],
+            ])
+            ->assertRedirect();
+
+        $cookie = $suite->cookies()->first();
+        $this->assertNotNull($cookie);
+        $this->assertSame(1789999999, $cookie->expires);
+        $this->assertTrue((bool) $cookie->http_only);
+        $this->assertSame('Lax', $cookie->same_site);
+    }
+
+    public function test_update_accepts_devtools_same_site_spellings_and_expiration_date(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $suite = TestSuite::create(['name' => 'Suite', 'created_by' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->put("/sorify/suites/{$suite->id}", [
+                'cookies' => [
+                    ['name' => 'a', 'value' => '1', 'domain' => 'example.com', 'sameSite' => 'lax', 'expirationDate' => 1789999999.5],
+                    ['name' => 'b', 'value' => '2', 'domain' => 'example.com', 'sameSite' => 'no_restriction', 'secure' => true],
+                    ['name' => 'c', 'value' => '3', 'domain' => 'example.com', 'sameSite' => 'unspecified'],
+                ],
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('Lax', $suite->cookies()->where('name', 'a')->value('same_site'));
+        $this->assertSame(1789999999, (int) $suite->cookies()->where('name', 'a')->value('expires'));
+        $this->assertSame('None', $suite->cookies()->where('name', 'b')->value('same_site'));
+        $this->assertNull($suite->cookies()->where('name', 'c')->value('same_site'));
+    }
+
+    public function test_update_still_rejects_genuinely_invalid_same_site(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $suite = TestSuite::create(['name' => 'Suite', 'created_by' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->put("/sorify/suites/{$suite->id}", [
+                'cookies' => [['name' => 'x', 'value' => 'y', 'domain' => 'example.com', 'same_site' => 'Banana']],
+            ])
+            ->assertSessionHasErrors(['cookies.0.same_site']);
+    }
+
+    public function test_mcp_upload_suite_cookies_accepts_raw_playwright_storage_state(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $suite = TestSuite::create(['name' => 'Suite', 'created_by' => $admin->id]);
+
+        $storageState = json_encode([
+            'cookies' => [
+                ['name' => 'sid', 'value' => 'v1', 'domain' => 'example.com', 'path' => '/', 'expires' => 1789999999.047, 'httpOnly' => true, 'secure' => true, 'sameSite' => 'Lax'],
+            ],
+            'origins' => [],
+        ]);
+
+        SorifyServer::actingAs($admin)
+            ->tool(UploadSuiteCookiesTool::class, [
+                'suite_id' => $suite->id,
+                'storage_state' => $storageState,
+            ])
+            ->assertOk();
+
+        $cookie = $suite->cookies()->first();
+        $this->assertNotNull($cookie);
+        $this->assertSame(1789999999, $cookie->expires);
+        $this->assertTrue((bool) $cookie->http_only);
+        $this->assertSame('Lax', $cookie->same_site);
+    }
+
+    public function test_mcp_update_suite_accepts_raw_playwright_cookies(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $suite = TestSuite::create(['name' => 'Suite', 'created_by' => $admin->id]);
+
+        SorifyServer::actingAs($admin)
+            ->tool(UpdateSuiteTool::class, [
+                'suite_id' => $suite->id,
+                'name' => 'Suite',
+                'cookies' => [
+                    ['name' => 'sid', 'value' => 'v1', 'domain' => 'example.com', 'path' => '/', 'expires' => 1789999999.047, 'httpOnly' => true, 'secure' => true, 'sameSite' => 'lax'],
+                ],
+            ])
+            ->assertOk();
+
+        $cookie = $suite->cookies()->first();
+        $this->assertNotNull($cookie);
+        $this->assertSame(1789999999, $cookie->expires);
+        $this->assertTrue((bool) $cookie->http_only);
+        $this->assertSame('Lax', $cookie->same_site);
+    }
+
     // ─── Authorization ────────────────────────────────────────────────────────
 
     public function test_member_without_edit_cannot_update_cookies(): void
@@ -448,6 +551,30 @@ JS);
         $this->assertStringContainsString('token', $result->stdout);
 
         File::deleteDirectory($tmpDir);
+    }
+
+    public function test_harness_normalizes_stored_cookies_so_playwright_accepts_them(): void
+    {
+        if (static::nodeUnavailable() || ! is_dir(base_path('node_modules/playwright'))) {
+            $this->markTestSkipped('node or the playwright package is not available; skipping harness test.');
+        }
+
+        // Shape written to cookies.json by the runner services: unset DB columns are null.
+        $stored = [
+            ['name' => 'by_domain', 'value' => 'v', 'domain' => '.example.com', 'path' => null, 'url' => null, 'expires' => null, 'httpOnly' => true, 'secure' => true, 'sameSite' => null],
+            ['name' => 'by_url', 'value' => null, 'domain' => null, 'path' => null, 'url' => 'https://example.com/', 'expires' => 1900000000, 'httpOnly' => false, 'secure' => false, 'sameSite' => 'Lax'],
+        ];
+
+        $script = "const {normalizeCookies}=require('./resources/playwright/harness.cjs');"
+            .'process.stdout.write(JSON.stringify(normalizeCookies(JSON.parse(process.argv[1]))));';
+        exec('cd '.escapeshellarg(base_path()).' && node -e '.escapeshellarg($script).' '.escapeshellarg(json_encode($stored)).' 2>&1', $output, $exitCode);
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+
+        [$byDomain, $byUrl] = json_decode(implode("\n", $output), true);
+
+        // Playwright rejects null values and cookies carrying both url and domain.
+        $this->assertSame(['name' => 'by_domain', 'value' => 'v', 'domain' => '.example.com', 'path' => '/', 'expires' => -1, 'httpOnly' => true, 'secure' => true], $byDomain);
+        $this->assertSame(['name' => 'by_url', 'value' => '', 'url' => 'https://example.com/', 'expires' => 1900000000, 'httpOnly' => false, 'secure' => false, 'sameSite' => 'Lax'], $byUrl);
     }
 
     private static function nodeUnavailable(): bool

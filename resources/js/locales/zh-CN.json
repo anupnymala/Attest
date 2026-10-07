@@ -286,10 +286,12 @@
         "pasteCookieJson": "粘贴 JSON",
         "pasteCookieJsonTitle": "粘贴 Cookie JSON",
         "pasteCookieJsonHint": "粘贴 Playwright Cookie 数组或 storageState JSON 对象。具有相同 name+domain+path 的现有 Cookie 将被替换；新的将被添加。",
-        "pasteCookieJsonPlaceholder": "[\n  { \"name\": \"session\", \"value\": \"abc\", \"domain\": \"example.com\", \"path\": \"/\" }\n]",
+        "pasteCookieJsonPlaceholder": "[\n  {'{'} \"name\": \"session\", \"value\": \"abc\", \"domain\": \"example.com\", \"path\": \"/\" {'}'}\n]",
         "pasteCookieJsonApply": "应用",
         "pasteCookieJsonCancel": "取消",
         "pasteCookieJsonError": "无法解析 JSON，请检查格式。",
+
+        "pasteCookieJsonSaveError": "服务器拒绝了这些 Cookie。请检查各字段（name、domain 或 url、sameSite）后重试。",
         "cookiesCount": "{count} 个 Cookie",
         "browser": "浏览器",
         "mode": "模式",

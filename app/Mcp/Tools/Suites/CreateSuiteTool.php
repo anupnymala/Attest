@@ -7,6 +7,7 @@ use App\Mcp\Tools\Concerns\AuthorizesSuiteAccess;
 use App\Models\TestSuite;
 use App\Services\ActivityLogger;
 use App\Services\GithubAppAccessService;
+use App\Support\CookiePayload;
 use App\Support\IntegrationPayload;
 use App\Support\NotificationCooldown;
 use App\Support\ScreenshotMode;
@@ -133,6 +134,13 @@ class CreateSuiteTool extends Tool
         if ($request->has('coverage_url_filter')) {
             $parts = array_filter(array_map('trim', explode(',', (string) $request->get('coverage_url_filter'))));
             $request->merge(['coverage_url_filter' => $parts ? implode(',', $parts) : null]);
+        }
+
+        // Real-world cookie dialects (Playwright camelCase + float expires,
+        // DevTools sameSite spellings) are normalized onto the canonical form
+        // before validation — same as the web request and upload tool.
+        if ($request->has('cookies') && is_array($request->get('cookies'))) {
+            $request->merge(['cookies' => CookiePayload::normalize($request->get('cookies'))]);
         }
 
         $data = $request->validate((new StoreSuiteRequest)->rules());

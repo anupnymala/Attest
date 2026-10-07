@@ -584,7 +584,7 @@ function removeVariable(index) {
     saveVariables();
 }
 
-function saveCookies() {
+function saveCookies({ onSaved, onFailed } = {}) {
     const cookies = localSuiteSettings.cookies
         .filter(c => c.name.trim() && (c.domain.trim() || c.url.trim()))
         .map(c => {
@@ -605,6 +605,7 @@ function saveCookies() {
             return out;
         });
     savingSuiteSetting.value = true;
+    let failed = false;
     const oldCookies = (props.suite.cookies ?? []).map(c => ({
         name: c.name ?? '', value: c.value ?? '', domain: c.domain ?? '', path: c.path ?? '/',
         url: c.url ?? '', expires: c.expires ?? '', http_only: c.http_only ?? false,
@@ -616,12 +617,22 @@ function saveCookies() {
         {
             preserveState: true,
             preserveScroll: true,
-            onError: () => { localSuiteSettings.cookies = oldCookies; },
+            onSuccess: () => { if (onSaved) onSaved(); },
+            onError: () => {
+                failed = true;
+                localSuiteSettings.cookies = oldCookies;
+                if (onFailed) onFailed();
+            },
             onFinish: () => {
                 savingSuiteSetting.value = false;
-                savedSuiteField.value = 'cookies';
-                clearTimeout(savedSuiteTimer);
-                savedSuiteTimer = setTimeout(() => { savedSuiteField.value = null; }, 1500);
+                // Flash the "Saved" chip only when the save actually landed —
+                // after a rejected paste the chip would contradict the error
+                // message shown in the modal.
+                if (! failed) {
+                    savedSuiteField.value = 'cookies';
+                    clearTimeout(savedSuiteTimer);
+                    savedSuiteTimer = setTimeout(() => { savedSuiteField.value = null; }, 1500);
+                }
             },
         },
     );
@@ -643,14 +654,32 @@ function removeCookie(index) {
 const showCookiePasteModal = ref(false);
 const cookiePasteText = ref('');
 const cookiePasteError = ref(false);
+const cookiePasteSaveError = ref(false);
+
+// sameSite spellings seen in the wild (Chrome DevTools / EditThisCookie
+// exports) mapped onto the values Playwright accepts. Mirrors
+// App\Support\CookiePayload. Unknown values are left untouched so the
+// server rejects them with a visible message instead of silently
+// dropping the attribute.
+const COOKIE_SAME_SITE_ALIASES = { strict: 'Strict', lax: 'Lax', none: 'None', no_restriction: 'None', unspecified: '' };
+
+function normalizeCookieSameSite(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const mapped = COOKIE_SAME_SITE_ALIASES[String(value).toLowerCase().trim()];
+    return mapped !== undefined ? mapped : value;
+}
 
 function openCookiePasteModal() {
     cookiePasteText.value = '';
     cookiePasteError.value = false;
+    cookiePasteSaveError.value = false;
     showCookiePasteModal.value = true;
 }
 
 function applyCookiePaste() {
+    cookiePasteError.value = false;
+    cookiePasteSaveError.value = false;
+
     let parsed;
     try {
         parsed = JSON.parse(cookiePasteText.value);
@@ -659,12 +688,15 @@ function applyCookiePaste() {
         return;
     }
 
-    // Accept either a bare cookie array or a Playwright storageState object.
+    // Accept a bare cookie array, a Playwright storageState object, or a
+    // single cookie object.
     let incoming = [];
     if (Array.isArray(parsed)) {
         incoming = parsed;
     } else if (parsed && Array.isArray(parsed.cookies)) {
         incoming = parsed.cookies;
+    } else if (parsed && parsed.name) {
+        incoming = [parsed];
     } else {
         cookiePasteError.value = true;
         return;
@@ -678,10 +710,10 @@ function applyCookiePaste() {
             domain: c.domain ?? '',
             path: c.path ?? '/',
             url: c.url ?? '',
-            expires: c.expires ?? '',
+            expires: c.expires ?? c.expirationDate ?? '',
             http_only: !!c.httpOnly || !!c.http_only,
             secure: !!c.secure,
-            same_site: c.sameSite ?? c.same_site ?? '',
+            same_site: normalizeCookieSameSite(c.sameSite ?? c.same_site),
         }));
 
     if (!normalized.length) {
@@ -702,8 +734,12 @@ function applyCookiePaste() {
         }
     }
     localSuiteSettings.cookies = existing;
-    showCookiePasteModal.value = false;
-    saveCookies();
+    // Keep the modal open until the server confirms: on failure it re-shows
+    // the pasted text with an error instead of silently reverting.
+    saveCookies({
+        onSaved: () => { showCookiePasteModal.value = false; },
+        onFailed: () => { cookiePasteSaveError.value = true; },
+    });
 }
 
 // Inline run settings (Browser, Mode, Timeout, Screenshots, Retries, Keep History)
@@ -2936,9 +2972,10 @@ function toggleRunsExpanded(testId) {
                     spellcheck="false"
                 ></textarea>
                 <p v-if="cookiePasteError" class="md-label-small text-[var(--md-sys-color-error)]">{{ t('testSuiteShow.pasteCookieJsonError') }}</p>
+                <p v-if="cookiePasteSaveError" class="md-label-small text-[var(--md-sys-color-error)]">{{ t('testSuiteShow.pasteCookieJsonSaveError') }}</p>
                 <div class="flex justify-end gap-3 pt-2">
                     <Button variant="text" size="sm" @click="showCookiePasteModal = false">{{ t('testSuiteShow.pasteCookieJsonCancel') }}</Button>
-                    <Button variant="filled" size="sm" @click="applyCookiePaste">{{ t('testSuiteShow.pasteCookieJsonApply') }}</Button>
+                    <Button variant="filled" size="sm" :disabled="savingSuiteSetting" @click="applyCookiePaste">{{ t('testSuiteShow.pasteCookieJsonApply') }}</Button>
                 </div>
             </div>
         </Modal>

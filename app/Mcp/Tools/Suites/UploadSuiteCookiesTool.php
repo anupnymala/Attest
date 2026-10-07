@@ -5,6 +5,7 @@ namespace App\Mcp\Tools\Suites;
 use App\Mcp\Tools\Concerns\AuthorizesSuiteAccess;
 use App\Models\TestSuite;
 use App\Services\ActivityLogger;
+use App\Support\CookiePayload;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Mcp\Request;
@@ -68,8 +69,12 @@ class UploadSuiteCookiesTool extends Tool
             }
         }
 
-        // Validate the individual cookie shapes using rules that mirror StoreSuiteRequest.
+        // Validate the individual cookie shapes using rules that mirror
+        // StoreSuiteRequest, after normalizing real-world dialects (Playwright
+        // camelCase + float expires, DevTools sameSite spellings) onto the
+        // canonical form — the same normalization the web request applies.
         if ($cookies !== null) {
+            $cookies = CookiePayload::normalize($cookies);
             $cookieRules = [
                 'cookies' => 'nullable|array',
                 'cookies.*.name' => ['required_with:cookies', 'string', 'max:255'],
